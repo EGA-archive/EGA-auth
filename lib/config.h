@@ -11,9 +11,7 @@ struct options_s {
   
   gid_t gid;               /* group id for all EGA users */
   uid_t uid_shift;         /* added to the user id from CentralEGA */
-  char* prompt;            /* Please enter password */
-  char* shell;             /* Please enter password */
-  unsigned int cache_ttl;  /* How long a cache entry is valid (in seconds) */
+  char* shell;             /* User shell. Defaults to /bin/bash */
 
   char* db_path;           /* db file path */
 
@@ -24,23 +22,19 @@ struct options_s {
   bool chroot;             /* sandboxing the users in their home directory */
 
   /* Contacting Central EGA (vie REST call) */
-  char* cega_endpoint_username; /* string format with one %s, replaced by username | returns a triplet in JSON format */
-  size_t cega_endpoint_username_len; /* its length, -2 (for %s) */
-
-  char* cega_endpoint_uid;      /* string format with one %s, replaced by uid      | idem */
-  size_t cega_endpoint_uid_len; /* its length, -2 (for %s) */
-
-  char* cega_json_prefix;  /* Searching for the data rooted at this prefix */
-
-  char* cega_creds;        /* for authentication: user:password */
-  char* ssl_cert;          /* path the SSL certificate to contact Central EGA */
+  char* idp_url;           /* Identity Provider URL */
+  char* client_id;         /* Client ID used by the IdP */
+  char* client_secret;     /* Client Secret used by the IdP */
+  char* redirect_uri;      /* Where the IdP sends us back. TODO: URL-encode it? */
+  unsigned int interval;   /* Sleep interval before checking for token again */
+  unsigned int repeat;     /* Max number of checks */
 };
 
 typedef struct options_s options_t;
 
 extern options_t* options;
 
-bool loadconfig(void);
+bool loadconfig(const char* filepath);
 void cleanconfig(void);
 
 #endif /* !__LEGA_CONFIG_H_INCLUDED__ */

@@ -1,28 +1,10 @@
 ##########################################
-# Remote database settings (using ReST)
-##########################################
-
-# The username will be appended to the endpoints
-cega_endpoint_username = http://cega_users/users/%s?idType=username
-cega_endpoint_uid = http://cega_users/users/%u?idType=uid
-cega_creds = user:password
-
-# Selects where the JSON object is rooted
-# Use a dotted format à la JQ, eg level1.level2.level3
-# Default: empty
-cega_json_prefix = 
-
-##########################################
 # Local database settings (for NSS & PAM)
 ##########################################
 
 # Absolute path to the SQLite database.
 # Required setting. No default value.
 db_path = /run/ega-users.db
-
-# Sets how long a cache entry is valid, in seconds.
-# Default: 3600 (ie 1h).
-# cache_ttl = 86400
 
 # Per site configuration, to shift the users id range
 # Default: 10000
@@ -49,11 +31,22 @@ ega_dir_attrs = 2750 # rwxr-s---
 # Default: 027 # world-denied
 #ega_dir_umask = 027
 
-# When the password is asked
-# Default: "Please, enter your EGA password: "
-#prompt = Knock Knock:
-
 # The user's login shell.
 # Default: /bin/bash
 #ega_shell = /bin/aspshell-r
+
+##########################################
+# OpenID Connect
+##########################################
+
+# Client credentials. Required
+client_id = lega
+client_secret = something-probably-long
+
+# OpenID Connect server
+# We use the authorization code flow
+idp_url = https://idp.ega-archive.org/authorize
+
+# Redirection URL after a code is exchanged for an access token
+redirect_uri = http%3A%2F%2Ftf.crg.eu%3A9090%2Ftokens%2F
 

@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <alloca.h>
 #include <unistd.h>
+#include <uuid/uuid.h>
 
 #define _XOPEN_SOURCE 700 /* for stpcpy */
 #include <string.h>
@@ -65,7 +66,7 @@ extern char* syslog_name;
 static inline void close_file(FILE** f){ if(*f){ D3("Closing file"); fclose(*f); }; }
 #define _cleanup_file_ __attribute__((cleanup(close_file)))
 
-static inline void free_str(char** p){ D3("Freeing %p: %s", p, *p); free(*p); }
+static inline void free_str(char** p){ D3("Freeing %p", p); free(*p); }
 #define _cleanup_str_ __attribute__((cleanup(free_str)))
 
 /*
@@ -110,6 +111,28 @@ copy2buffer(const char* data, char** dest, char **bufptr, size_t *buflen)
   *buflen -= slen;
   
   return slen;
+}
+
+static inline int
+make_session_id(char** result)
+{
+  if (result == NULL) { D1("Where shall we allocate the result?"); return -1; }
+  if (*result != NULL) { D1("Not overwriting the result [at %p]: %s", result, *result); return -2; }
+
+  *result = (char*)malloc(37 * sizeof(char)); // 36 + 1
+  /* *result = '\0'; */
+  memset(*result,'\0', 37);
+
+  uuid_t session_id;
+  uuid_generate(session_id);
+
+  sprintf(*result, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+	  session_id[0], session_id[1], session_id[2], session_id[3],
+	  session_id[4], session_id[5],
+	  session_id[6], session_id[7],
+	  session_id[8], session_id[9],
+	  session_id[10], session_id[11],session_id[12],session_id[13], session_id[14], session_id[15]);
+  return 0;
 }
 
 #endif /* !__LEGA_UTILS_H_INCLUDED__ */
