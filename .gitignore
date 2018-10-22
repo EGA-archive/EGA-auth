@@ -1,3 +1,14 @@
+*~
+.#*
+.DS_Store
+tmp/
+*.so
+*.so.*
+*.o
+*.la
+src/ega_ssh_keys
+
+
 # Prerequisites
 *.d
 
