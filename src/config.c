@@ -175,12 +175,17 @@ REALLOC:
   D3("Allocating buffer of size %zd", size);
   if(options->buffer)free(options->buffer);
   options->buffer = malloc(sizeof(char) * size);
-  /* memset(options->buffer, '\0', size); */
-  *(options->buffer) = '\0';
+  memset(options->buffer, '\0', size);
+  /* *(options->buffer) = '\0'; */
   if(!options->buffer){ D3("Could not allocate buffer of size %zd", size); return false; };
 
   if( readconfig(fp, options->buffer, size) < 0 ){
-    size = size << 1; // double it
+
+    /* Rewind first */
+    if(fseek(fp, 0, SEEK_SET)){ D3("Could not rewind config file to start"); return false; }
+
+    /* Doubling the buffer size */
+    size = size << 1;
     goto REALLOC;
   }
 
