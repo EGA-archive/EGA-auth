@@ -33,7 +33,12 @@ struct options_s {
   char* cega_json_prefix;  /* Searching for the data rooted at this prefix */
 
   char* cega_creds;        /* for authentication: user:password */
-  char* ssl_cert;          /* path the SSL certificate to contact Central EGA */
+
+  char* cacertfile;        /* path to the Root certificate to contact Central EGA */
+  char* certfile;          /* For client verification */
+  char* keyfile;
+  bool verify_peer;
+  bool verify_hostname;
 };
 
 typedef struct options_s options_t;

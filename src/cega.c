@@ -67,13 +67,35 @@ cega_resolve(const char *endpoint,
   curl_easy_setopt(curl, CURLOPT_HTTPAUTH      , CURLAUTH_BASIC);
   curl_easy_setopt(curl, CURLOPT_USERPWD       , options->cega_creds);
   /* curl_easy_setopt(curl, CURLOPT_NOPROGRESS    , 0L               ); */ /* enable progress meter */
-  /* curl_easy_setopt(curl, CURLOPT_SSLCERT      , options->ssl_cert); */
-  /* curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE  , "PEM"            ); */
 
-#ifdef DEBUG
-  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-#endif
+  if ( options->verify_peer && options->cacertfile ){
+    D2("Verifying peer settings [CA: %s]", options->cacertfile);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_CAINFO        , options->cacertfile);
+  } else {
+    D2("Do not verify peer");
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+  }
+
+  if ( options->verify_hostname ){
+    D2("Check hostname settings");
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 1L);
+  } else {
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+  }
+
+  if ( options->certfile ){
+    D2("Adding certfile: %s", options->certfile);
+    curl_easy_setopt(curl, CURLOPT_SSLCERT       , options->certfile);
+    curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE   , "PEM"            );
+
+  }
+
+  if ( options->keyfile ){
+    D2("Adding keyfile: %s", options->keyfile);
+    curl_easy_setopt(curl, CURLOPT_SSLKEY       , options->keyfile);
+    curl_easy_setopt(curl, CURLOPT_SSLKEYTYPE   , "PEM"           );
+  }
 
   /* Perform the request */
   CURLcode res = curl_easy_perform(curl);

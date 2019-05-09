@@ -12,6 +12,22 @@ cega_creds = user:password
 # Default: empty
 cega_json_prefix = 
 
+# Enforce hostname verification.
+# Default: no
+# verify_hostname = yes
+
+# Enforce server verification.
+# Default: no
+# verify_peer = yes
+
+# Absolute path to the CA certificate (in PEM format).
+# Required setting if verify_peer is set to yes. No default value.
+# cacertfile = /etc/ega/CA.cert
+
+# In case of client verification (in PEM format)
+# certfile = /etc/ega/ssl.cert
+# keyfile = /etc/ega/ssl.key
+
 ##########################################
 # Local database settings (for NSS & PAM)
 ##########################################

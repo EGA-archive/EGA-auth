@@ -7,7 +7,6 @@
 #include "config.h"
 
 #define CFGFILE "/etc/ega/auth.conf"
-#define CEGA_CERT "/etc/ega/cega.pem"
 #define PROMPT "Please, enter your EGA password: "
 #define UMASK 0027 /* no permission for world */
 
@@ -18,8 +17,13 @@
 #define ENABLE_CHROOT false
 #define CHROOT_OPTION "chroot_sessions"
 
+#define VERIFY_PEER false
+#define VERIFY_HOSTNAME false
+
 options_t* options = NULL;
-char* syslog_name = "EGA";
+char* syslog_name = "EGA-auth";
+
+static inline void set_yes_no_option(char* key, char* val, char* name, bool* loc);
 
 void
 cleanconfig(void)
@@ -57,7 +61,13 @@ valid_options(void)
   if(!options->cega_endpoint_username) { D3("Invalid cega_endpoint for usernames");    valid = false; }
   if(!options->cega_endpoint_uid ) { D3("Invalid cega_endpoint for user ids");    valid = false; }
 
-  /* if(options->ssl_cert          ) { D3("Invalid ssl_cert");      valid = false; } */
+  if(options->verify_peer &&
+     !options->cacertfile){ D3("Missing cacertfile, when using verify_peer"); valid = false; }
+
+  if(!!options->certfile ^ !!options->keyfile){
+    D3("Either certfile or keyfile is missing");
+    valid = false;
+  }
 
   if(!valid){ D3("Invalid config struct from %s", options->cfgfile); }
   return valid;
@@ -84,9 +94,15 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
   options->cega_endpoint_username_len = 0;
   options->cega_endpoint_uid_len = 0;
 
+  /* TLS settings */
+  options->verify_peer = VERIFY_PEER;
+  options->verify_hostname = VERIFY_HOSTNAME;
+  options->cacertfile = NULL;
+  options->certfile = NULL;
+  options->keyfile = NULL;
+
   COPYVAL(CFGFILE   , options->cfgfile          );
   COPYVAL(PROMPT    , options->prompt           );
-  COPYVAL(CEGA_CERT , options->ssl_cert         );
   COPYVAL(EGA_SHELL , options->shell            );
   options->cega_json_prefix = '\0'; /* default */
 
@@ -130,21 +146,19 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
     INJECT_OPTION(key, "cega_endpoint_uid" , val, options->cega_endpoint_uid);
     INJECT_OPTION(key, "cega_creds"        , val, options->cega_creds       );
     INJECT_OPTION(key, "cega_json_prefix"  , val, options->cega_json_prefix );
-    INJECT_OPTION(key, "ssl_cert"          , val, options->ssl_cert         );
+    INJECT_OPTION(key, "cacertfile"        , val, options->cacertfile       );
+    INJECT_OPTION(key, "certfile"          , val, options->certfile         );
+    INJECT_OPTION(key, "keyfile"           , val, options->keyfile          );
 
 
-    if(!strcmp(key, CHROOT_OPTION)) {
-      if(!strcasecmp(val, "yes") || !strcasecmp(val, "true") || !strcmp(val, "1") || !strcasecmp(val, "on")){
-	options->chroot = true;
-      } else if(!strcasecmp(val, "no") || !strcasecmp(val, "false") || !strcmp(val, "0") || !strcasecmp(val, "off")){
-	options->chroot = false;
-      } else {
-	D2("Could not parse the "CHROOT_OPTION": Using %s instead.", ((options->chroot)?"yes":"no"));
-      }
-    }	
+    set_yes_no_option(key, val, CHROOT_OPTION, &(options->chroot));
+    set_yes_no_option(key, val, "verify_peer", &(options->verify_peer));
+    set_yes_no_option(key, val, "verify_hostname", &(options->verify_hostname));
   }
 
   D1(CHROOT_OPTION": %s", ((options->chroot)?"yes":"no"));
+  D1("verify_peer: %s", ((options->verify_peer)?"yes":"no"));
+  D1("verify_hostname: %s", ((options->verify_hostname)?"yes":"no"));
 
   if(options->cega_endpoint_username)
     options->cega_endpoint_username_len = strlen(options->cega_endpoint_username) - 1; /* count away %u, add \0 */
@@ -196,4 +210,18 @@ REALLOC:
 #else
   return true;
 #endif
+}
+
+static inline void
+set_yes_no_option(char* key, char* val, char* name, bool* loc)
+{
+  if(!strcmp(key, name)) {
+    if(!strcasecmp(val, "yes") || !strcasecmp(val, "true") || !strcmp(val, "1") || !strcasecmp(val, "on")){
+      *loc = true;
+    } else if(!strcasecmp(val, "no") || !strcasecmp(val, "false") || !strcmp(val, "0") || !strcasecmp(val, "off")){
+      *loc = false;
+    } else {
+      D2("Could not parse the %s option: Using %s instead.", name, ((*loc)?"yes":"no"));
+    }
+  }
 }
