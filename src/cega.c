@@ -1,5 +1,11 @@
 #include <curl/curl.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <pwd.h>
 
 #include "utils.h"
 #include "backend.h"

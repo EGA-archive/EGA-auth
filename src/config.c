@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <grp.h>
 #include <strings.h>
+#include <stdio.h>
 
 #include "utils.h"
 #include "config.h"
@@ -73,8 +74,8 @@ valid_options(void)
   return valid;
 }
 
-#define INJECT_OPTION(key,ckey,val,loc) do { if(!strcmp(key, ckey) && copy2buffer(val, &(loc), &buffer, &buflen) < 0 ){ return -1; } } while(0)
-#define COPYVAL(val,dest) do { if( copy2buffer(val, &(dest), &buffer, &buflen) < 0 ){ return -1; } } while(0)
+#define INJECT_OPTION(key,ckey,val,loc) do { if(!strcmp(key, ckey) && copy2buffer(val, loc, &buffer, &buflen) < 0 ){ return -1; } } while(0)
+#define COPYVAL(val,dest,b,blen) do { if( copy2buffer(val, dest, b, blen) < 0 ){ return -1; } } while(0)
 
 static inline int
 readconfig(FILE* fp, char* buffer, size_t buflen)
@@ -101,9 +102,9 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
   options->certfile = NULL;
   options->keyfile = NULL;
 
-  COPYVAL(CFGFILE   , options->cfgfile          );
-  COPYVAL(PROMPT    , options->prompt           );
-  COPYVAL(EGA_SHELL , options->shell            );
+  COPYVAL(CFGFILE   , &(options->cfgfile), &buffer, &buflen );
+  COPYVAL(PROMPT    , &(options->prompt) , &buffer, &buflen );
+  COPYVAL(EGA_SHELL , &(options->shell)  , &buffer, &buflen );
   options->cega_json_prefix = '\0'; /* default */
 
   /* Parse line by line */
@@ -138,17 +139,17 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
     if(!strcmp(key, "cache_ttl"     )) { if( !sscanf(val, "%u" , &(options->cache_ttl) )) options->cache_ttl = -1; }
     if(!strcmp(key, "ega_gid"       )) { if( !sscanf(val, "%u" , &(options->gid)   )) options->gid = -1; }
    
-    INJECT_OPTION(key, "db_path"           , val, options->db_path          );
-    INJECT_OPTION(key, "ega_dir"           , val, options->ega_dir          );
-    INJECT_OPTION(key, "prompt"            , val, options->prompt           );
-    INJECT_OPTION(key, "ega_shell"         , val, options->shell            );
-    INJECT_OPTION(key, "cega_endpoint_username", val, options->cega_endpoint_username);
-    INJECT_OPTION(key, "cega_endpoint_uid" , val, options->cega_endpoint_uid);
-    INJECT_OPTION(key, "cega_creds"        , val, options->cega_creds       );
-    INJECT_OPTION(key, "cega_json_prefix"  , val, options->cega_json_prefix );
-    INJECT_OPTION(key, "cacertfile"        , val, options->cacertfile       );
-    INJECT_OPTION(key, "certfile"          , val, options->certfile         );
-    INJECT_OPTION(key, "keyfile"           , val, options->keyfile          );
+    INJECT_OPTION(key, "db_path"           , val, &(options->db_path)          );
+    INJECT_OPTION(key, "ega_dir"           , val, &(options->ega_dir)          );
+    INJECT_OPTION(key, "prompt"            , val, &(options->prompt)           );
+    INJECT_OPTION(key, "ega_shell"         , val, &(options->shell)            );
+    INJECT_OPTION(key, "cega_endpoint_username", val, &(options->cega_endpoint_username));
+    INJECT_OPTION(key, "cega_endpoint_uid" , val, &(options->cega_endpoint_uid));
+    INJECT_OPTION(key, "cega_creds"        , val, &(options->cega_creds)       );
+    INJECT_OPTION(key, "cega_json_prefix"  , val, &(options->cega_json_prefix) );
+    INJECT_OPTION(key, "cacertfile"        , val, &(options->cacertfile)       );
+    INJECT_OPTION(key, "certfile"          , val, &(options->certfile)         );
+    INJECT_OPTION(key, "keyfile"           , val, &(options->keyfile)          );
 
 
     set_yes_no_option(key, val, CHROOT_OPTION, &(options->chroot));
@@ -205,12 +206,22 @@ REALLOC:
 
   D2("Conf loaded [@ %p]", options);
 
+#if DEBUG
+  D1("-------------");
+  int i=0;
+  char* c = options->buffer;
+  for(;i<size;i++,c++){ fprintf(stderr, "%c", *c); }
+  fprintf(stderr, "\n");
+  D1("-------------");
+#endif
+
 #ifdef DEBUG
   return valid_options();
 #else
   return true;
 #endif
 }
+
 
 static inline void
 set_yes_no_option(char* key, char* val, char* name, bool* loc)
