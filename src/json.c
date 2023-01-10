@@ -4,13 +4,25 @@
 #include "config.h"
 #include "json.h"
 
-#define CEGA_JSON_PREFIX_DELIM "."
 
-/* Will search for options->cega_json_prefix first, and then those exact ones */
+/**
+ *  Accepted JSON format: 
+ *  --------------------
+ *
+ *     {
+ *       "sshPublicKeys" : array of strings,
+ *       "username" : string,
+ *       "passwordHash" : string,
+ *       "uid" : int,
+ *       "gecos" : string
+ *     }
+ *
+ */
+
 #define CEGA_JSON_USER  "username"
 #define CEGA_JSON_UID   "uid"
 #define CEGA_JSON_PWD   "passwordHash"
-#define CEGA_JSON_PBK   "sshPublicKey"
+#define CEGA_JSON_PBK   "sshPublicKeys"
 #define CEGA_JSON_GECOS "gecos"
 
 #ifdef DEBUG
@@ -21,6 +33,8 @@
                                               "Undefined")
 #endif
 
+
+#if 0
 static int
 get_size(jsmntok_t *t){
   int i, j;
@@ -36,16 +50,15 @@ get_size(jsmntok_t *t){
     return 1000000;
   }
 }
+#endif
 
 #define KEYEQ(json, t, s) ((int)strlen(s) == ((t)->end - (t)->start)) && strncmp((json) + (t)->start, s, (t)->end - (t)->start) == 0
 
 int
-parse_json(const char* json, int jsonlen,
-	   char** username, char** pwd, char** pbk, char** gecos, int* uid)
+parse_json(const char* json, int jsonlen, struct fega_user *user)
 {
   jsmn_parser jsonparser; /* on the stack */
   jsmntok_t *tokens = NULL; /* array of tokens */
-  char* prefix = NULL;
   size_t size_guess = 11; /* 5*2 (key:value) + 1(object) */
   int r, rc=1;
 
@@ -74,48 +87,11 @@ REALLOC:
   if( tokens->type != JSMN_OBJECT ){ D1("JSON object expected"); rc = 1; goto BAILOUT; }
   if( r<7 ){ D1("We should get at least 7 tokens"); rc = 1; goto BAILOUT; }
 
-  /* Find root token given the CentralEGA prefix */
-  prefix = strdup(options->cega_json_prefix); /* strtok modifies the str, so making copy */
-  if (prefix == NULL) { D1("memory allocation error"); goto BAILOUT; }
-  char* prefix2 = prefix; /* Trick from https://stackoverflow.com/a/28686287/6401565 */
-  const char *part = strtok(prefix2, CEGA_JSON_PREFIX_DELIM);
-   
-  /* walk through other tokens */
-  jsmntok_t *t = tokens; /* use a sentinel and move inside the object */
-  int j=0, k=0;
-  while( j<r && part != NULL ) {
-    t++;
-    D3("Finding '%s' in JSON", part);
-    
-inspect:
-    if( KEYEQ(json, t, part) ) goto found;
-    D3("nope... %.*s [%d items]", t->end-t->start, json + t->start, t->size);
-    k=get_size(t+1)+1;
-    j+=k;
-    if( j>=r ){ D1("We have exhausted all the tokens"); rc = 1; goto BAILOUT; }
-    t+=k;
-    goto inspect;
+  D1("ROOT %.*s [%d items]", tokens->end-tokens->start, json + tokens->start, tokens->size);
 
-found:
-    D3( "%s found", part );
-    t++; /* next should be the root object or array */
-
-    /* In case the root is an array, fetch the first element */
-    if( t->type == JSMN_ARRAY ){ t++; }
-
-    /* We should now point to the root object */
-    if( t->type != JSMN_OBJECT ){ D1("JSON object expected, but got %s", TYPE2STR(t->type)); rc = 1; goto BAILOUT; }
-
-    part = strtok(NULL, CEGA_JSON_PREFIX_DELIM);
-  }
-
-  if( j>=r ){ D1("We have exhausted all the tokens"); rc = 1; goto BAILOUT; }
-
-  D1("ROOT %.*s [%d items]", t->end-t->start, json + t->start, t->size);
-
+  jsmntok_t *t = tokens; /* sentinel */
   int max = t->size;
-  /* if( max<5 ){ D1("Invalid JSON"); rc = 1; goto BAILOUT; } */
-  int i;
+  int i,j;
   t++; /* move inside the root */
   rc = 0; /* assume success */
   for (i = 0; i < max; i++, t+=t->size+1) {
@@ -124,25 +100,50 @@ found:
 
       if( KEYEQ(json, t, CEGA_JSON_USER) ){
 	t+=t->size; /* get to the value */
-	if(*username){ D3("Strange! I already have username"); continue; }
-	*username = strndup(json + t->start, t->end-t->start);
+	if(user->username){ D3("Strange! I already have username"); continue; }
+	if(t->type == JSMN_STRING) /* not null */
+	  user->username = strndup(json + t->start, t->end-t->start);
       } else if( KEYEQ(json, t, CEGA_JSON_PWD) ){
 	t+=t->size; /* get to the value */
-	if(*pwd){ D3("Strange! I already have pwd"); continue; }
-	*pwd = strndup(json + t->start, t->end-t->start);
+	if(user->pwdh){ D3("Strange! I already have pwdh"); continue; }
+	if(t->type == JSMN_STRING) /* not null */
+	  user->pwdh = strndup(json + t->start, t->end-t->start);
       } else if( KEYEQ(json, t, CEGA_JSON_GECOS) ){
 	t+=t->size; /* get to the value */
-	if(*gecos){ D3("Strange! I already have gecos"); continue; }
-	*gecos = strndup(json + t->start, t->end-t->start);
+	if(user->gecos){ D3("Strange! I already have gecos"); continue; }
+	if(t->type == JSMN_STRING) /* not null */
+	  user->gecos = strndup(json + t->start, t->end-t->start);
       } else if( KEYEQ(json, t, CEGA_JSON_PBK) ){
 	t+=t->size; /* get to the value */
-	if(*pbk){ D3("Strange! I already have pbk"); continue; }
-	*pbk = strndup(json + t->start, t->end-t->start);
+	/* parse array */
+	jsmntok_t *k = t; /* sentinel */
+	int nkeys = k->size;
+	D1("KEYS %s %.*s [%d items]", TYPE2STR(k->type), k->end-k->start, json + k->start, k->size);
+	if(k->type == JSMN_ARRAY && nkeys > 0){
+	  if(user->pubkeys){ D3("Strange! I already have pubkeys"); continue; }
+	  k++; /* go inside */
+	  struct pbk *current = (struct pbk *)malloc(sizeof(struct pbk));
+	  if(!current){ D1("memory allocation error"); goto BAILOUT; }
+	  struct pbk *prev = NULL;
+	  user->pubkeys = current;
+	  for (j = 0; j < nkeys; j++, k+=k->size+1) {
+	    current->pbk = strndup(json + k->start, k->end-k->start);
+	    D1("Found key: %s", current->pbk);
+	    current->next = NULL;
+	    if(prev) prev->next = current;
+	    prev = current;
+	    current = (struct pbk *)malloc(sizeof(struct pbk));
+	    if(!current){ D1("memory allocation error"); goto BAILOUT; }
+	  }
+	}
       } else if( KEYEQ(json, t, CEGA_JSON_UID) ){
 	t+=t->size; /* get to the value */
-	char* cend;
-	*uid = strtol(json + t->start, (char**)&cend, 10); /* reuse cend above */
-	if( (cend != (json + t->end)) ) *uid=-1; /* error when cend does not point to end+1 */
+	if(t->type == JSMN_PRIMITIVE){ /* number */
+	  char* cend;
+	  int uid = strtol(json + t->start, (char**)&cend, 10); /* reuse cend above */
+	  if( (cend == (json + t->end)) ) /* else: error when cend does not point to end+1 */
+	    user->uid = uid; 
+	}
       } else {
 	D3("Unexpected key: %.*s with %d items", t->end-t->start, json + t->start, t->size);
 	t+=t->size; /* get to the value */
@@ -160,6 +161,5 @@ found:
 
 BAILOUT:
   if(tokens){ D3("Freeing tokens at %p", tokens); free(tokens); }
-  if(prefix){ D3("Freeing prefix at %p", prefix ); free(prefix); }
   return rc;
 }

@@ -8,19 +8,6 @@
 #include "utils.h"
 #include "backend.h"
 
-/* DB schema */
-#define EGA_SCHEMA_FMT "CREATE TABLE IF NOT EXISTS users (                      \
-                          username TEXT UNIQUE PRIMARY KEY ON CONFLICT REPLACE, \
-                          uid      INTEGER CHECK (uid >= %d),                   \
-                          pwdh     TEXT,				        \
-		          pubkey   TEXT,	                                \
-		          gecos    TEXT,					\
-                          expires  REAL                                   	\
-                        ) WITHOUT ROWID;"
-/* Not using "inserted REAL DEFAULT (strftime('%%s','now'))" */
-/* WITHOUT ROWID works only from 3.8.2 */
-
-
 static sqlite3* db = NULL;
 
 /*
@@ -76,12 +63,33 @@ backend_open(void)
   
   /* create table */
   D2("Creating the database schema");
-  sqlite3_stmt *stmt;
   char schema[1000]; /* Laaaarge enough! */
-  sprintf(schema, EGA_SCHEMA_FMT, options->uid_shift);
-  sqlite3_prepare_v2(db, schema, -1, &stmt, NULL);
-  if (!stmt || sqlite3_step(stmt) != SQLITE_DONE) { D1("ERROR creating table: %s", sqlite3_errmsg(db)); }
-  sqlite3_finalize(stmt);
+  sqlite3_stmt *stmt_users;
+  sprintf(schema,
+	  "CREATE TABLE IF NOT EXISTS users ("
+	  "  username TEXT UNIQUE PRIMARY KEY ON CONFLICT REPLACE,"
+	  "  uid      INTEGER CHECK (uid >= %d),"
+	  "  pwdh     TEXT,"
+	  "  gecos    TEXT,"
+	  "  expires  REAL" /* Not using "inserted REAL DEFAULT (strftime('%%s','now'))" */
+	  ") WITHOUT ROWID;", options->uid_shift); /* WITHOUT ROWID works only from 3.8.2 */
+
+  sqlite3_prepare_v2(db, schema, -1, &stmt_users, NULL);
+  if (!stmt_users || sqlite3_step(stmt_users) != SQLITE_DONE) { D1("ERROR creating users' table: %s", sqlite3_errmsg(db)); }
+  sqlite3_finalize(stmt_users);
+
+  sqlite3_stmt *stmt_keys;
+  sqlite3_prepare_v2(db,
+		     "CREATE TABLE IF NOT EXISTS keys ("
+		     "  uid      INTEGER NOT NULL,"
+		     "  pubkey   TEXT NOT NULL,"
+		     "  PRIMARY KEY (uid, pubkey),"
+		     "  FOREIGN KEY (uid) REFERENCES users(uid)"
+		     "                    ON DELETE CASCADE ON UPDATE NO ACTION"
+		     ");"
+		     "ALTER TABLE keys ADD CONSTRAINT PK_KEYS PRIMARY KEY (uid, pubkey);", -1, &stmt_keys, NULL);
+  if (!stmt_keys || sqlite3_step(stmt_keys) != SQLITE_DONE) { D1("ERROR creating keys' table: %s", sqlite3_errmsg(db)); }
+  sqlite3_finalize(stmt_keys);
 }
 
 void
@@ -97,31 +105,26 @@ backend_close(void)
  * Assumes config file already loaded and backend open
  */
 int
-backend_add_user(const char* username,
-		 uid_t uid,
-		 const char* pwdh,
-		 const char* pubkey,
-		 const char* gecos)
+backend_add_user(const struct fega_user *user)
 {
   sqlite3_stmt *stmt = NULL;
 
-  D1("Insert %s into cache", username);
+  D1("Insert %s into cache", user->username);
 
   /* The entry will be updated if already present */
-  sqlite3_prepare_v2(db, "INSERT INTO users (username,uid,pwdh,pubkey,gecos,expires) VALUES(?1,?2,?3,?4,?5,?6)", -1, &stmt, NULL);
+  sqlite3_prepare_v2(db, "INSERT INTO users (username,uid,pwdh,gecos,expires) VALUES(?1,?2,?3,?4,?5);", -1, &stmt, NULL);
   if(!stmt){ D1("Prepared statement error: %s", sqlite3_errmsg(db)); return false; }
 
-  sqlite3_bind_text(stmt,   1, username, -1, SQLITE_STATIC);
-  sqlite3_bind_int(stmt,    2, uid                        );
-  sqlite3_bind_text(stmt,   3, pwdh    , -1, SQLITE_STATIC);
-  sqlite3_bind_text(stmt,   4, pubkey  , -1, SQLITE_STATIC);
-  sqlite3_bind_text(stmt,   5, gecos   , -1, SQLITE_STATIC);
+  sqlite3_bind_text(stmt,   1, user->username, -1, SQLITE_STATIC);
+  sqlite3_bind_int(stmt,    2, user->uid                        );
+  sqlite3_bind_text(stmt,   3, user->pwdh    , -1, SQLITE_STATIC);
+  sqlite3_bind_text(stmt,   4, user->gecos   , -1, SQLITE_STATIC);
   
   unsigned int now = (unsigned int)time(NULL);
   unsigned int expiration = now + options->cache_ttl;
   D2("           Current time to %u", now);
   D2("Setting expiration date to %u", expiration);
-  sqlite3_bind_int(stmt, 6, expiration);
+  sqlite3_bind_int(stmt, 5, expiration);
 
   /* We should acquire a RESERVED lock.
      See: https://www.sqlite.org/lockingv3.html#writing
@@ -137,6 +140,37 @@ backend_add_user(const char* username,
   int rc = (sqlite3_step(stmt) == SQLITE_DONE)?0:1;
   if(rc) D1("Execution error: %s", sqlite3_errmsg(db));
   sqlite3_finalize(stmt);
+  stmt = NULL;
+
+  /* Adding the keys */
+  if(user->pubkeys){
+
+    struct pbk *pubkeys = user->pubkeys;
+
+
+    for(; pubkeys; pubkeys = pubkeys->next){
+      D2("Insert key %s for user %u", pubkeys->pbk, user->uid);
+      sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO keys (uid,pubkey) VALUES(?1,?2);", -1, &stmt, NULL);
+      if(!stmt){ D1("Prepared statement error: %s", sqlite3_errmsg(db)); return false; }
+      sqlite3_bind_int(stmt,    1, user->uid                        );
+      sqlite3_bind_text(stmt,   2, pubkeys->pbk    , -1, SQLITE_STATIC);
+      /* We should acquire a RESERVED lock.
+	 See: https://www.sqlite.org/lockingv3.html#writing
+	 When the lock is taken, the database returns SQLITE_BUSY.
+	 So...
+	 That should be ok with a busy-loop. (Alternative: sleep(0.5)).
+	 It is highly unlikely that this process will starve.
+	 All other process will not keep the database busy forever.
+      */
+      while( sqlite3_step(stmt) == SQLITE_BUSY ); // a RESERVED lock is taken
+      /* Execute the query. */
+      int rc = (sqlite3_step(stmt) == SQLITE_DONE)?0:1;
+      if(rc) D1("Execution error: %s", sqlite3_errmsg(db));
+      sqlite3_finalize(stmt);
+      stmt = NULL;
+    }
+  }
+
   return rc;
 }
 
@@ -238,21 +272,25 @@ BAILOUT:
  */
 
 bool
-backend_print_pubkey(const char* username)
+backend_print_pubkeys(const char* username)
 {
   sqlite3_stmt *stmt = NULL;
   int found = false; /* cache miss */
 
-  D2("select pubkey from users where username = %s AND expires > strftime('%%s', 'now') LIMIT 1", username);
-  sqlite3_prepare_v2(db, "select pubkey from users where username = ?1 AND expires > strftime('%s', 'now') LIMIT 1", -1, &stmt, NULL);
+  D2("select pubkeys for %s", username);
+  sqlite3_prepare_v2(db, "select distinct pubkey from users inner join keys on keys.uid = users.uid "
+		         "where username = ?1 AND expires > strftime('%s', 'now')", -1, &stmt, NULL);
   if(stmt == NULL){ D1("Prepared statement error: %s", sqlite3_errmsg(db)); return false; }
   sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+again:
   if(sqlite3_step(stmt) != SQLITE_ROW) { D2("No SQL row"); goto BAILOUT; } /* cache miss */
   if(sqlite3_column_type(stmt, 0) != SQLITE_TEXT){ D1("The colum 0 is not a string"); goto BAILOUT; }
-  const unsigned char* pubkey = sqlite3_column_text(stmt, 0);
+  const unsigned char* pubkey = sqlite3_column_text(stmt, 0); /* do not free */
   if( !pubkey ){ D1("Memory allocation error"); goto BAILOUT; }
-  printf("%s", pubkey);
+  printf("%s\n", pubkey);
   found = true; /* success */
+  goto again;
+
 BAILOUT:
   sqlite3_finalize(stmt);
   return found;
@@ -299,10 +337,6 @@ backend_has_expired(const char* username)
   /* Found it? */
   if(sqlite3_step(stmt) != SQLITE_ROW) { D1("No SQL row, something is weird"); goto BAILOUT; }
   if(sqlite3_column_type(stmt, 0) != SQLITE_INTEGER){ D1("The colum 0 is not an integer"); goto BAILOUT; }
-
-  D1("Just testing 1: %d", sqlite3_column_int(stmt, 0));
-  D1("Just testing 2: %d", sqlite3_column_int(stmt, 1));
-  D1("Just testing 3: %d", sqlite3_column_int(stmt, 2));
 
   /* Either not found or has expired */
   if (sqlite3_column_int(stmt, 0) == 0){ D2("Cache invalid for user %s", username); has_expired = true; }

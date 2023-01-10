@@ -3,7 +3,8 @@
 
 #include <sys/types.h>
 
-int cega_resolve(const char *endpoint,
-		 int (*cb)(char* username, uid_t uid, char* password_hash, char* pubkey, char* gecos));
+#include "json.h"
+
+int cega_resolve(const char *endpoint, int (*cb)(struct fega_user *));
 
 #endif /* !__LEGA_CENTRAL_H_INCLUDED__ */

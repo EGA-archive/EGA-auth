@@ -7,21 +7,23 @@
 #include "cega.h"
 #include "homedir.h"
 
+#define NSS_NAME(func) _nss_ega_ ## func
+
 /*
  * passwd functions
  */
 
 /* Not allowed */
-enum nss_status _nss_ega_setpwent (int stayopen){ D1("called"); return NSS_STATUS_UNAVAIL; }
-enum nss_status _nss_ega_endpwent(void){ D1("called"); return NSS_STATUS_UNAVAIL; }
-enum nss_status _nss_ega_getpwent_r(struct passwd *result, char *buffer, size_t buflen, int *errnop){ D1("called"); return NSS_STATUS_UNAVAIL; }
+enum nss_status NSS_NAME(setpwent)(int stayopen){ D1("called"); return NSS_STATUS_UNAVAIL; }
+enum nss_status NSS_NAME(endpwent)(void){ D1("called"); return NSS_STATUS_UNAVAIL; }
+enum nss_status NSS_NAME(getpwent_r)(struct passwd *result, char *buffer, size_t buflen, int *errnop){ D1("called"); return NSS_STATUS_UNAVAIL; }
 
 enum nss_status
-_nss_ega_getpwuid_r(uid_t uid, struct passwd *result,
+NSS_NAME(getpwuid_r)(uid_t uid, struct passwd *result,
 		    char *buffer, size_t buflen, int *errnop)
 {
   /* bail out if we're looking for the root user */
-  /* if( !strcmp(username, "root") ){ D1("bail out when root"); return NSS_STATUS_NOTFOUND; } */
+  /* if( uid == (uid_t)0 ){ D1("bail out when root"); return NSS_STATUS_NOTFOUND; } */
 
   if( uid == (uid_t)(-1) ){ D2("ignoring -1"); return NSS_STATUS_NOTFOUND; }
 
@@ -29,8 +31,9 @@ _nss_ega_getpwuid_r(uid_t uid, struct passwd *result,
   D1("Looking up user id %u [remotely %u]", uid, ruid);
   if( ruid <= 0 ){ D2("... too low: ignoring"); return NSS_STATUS_NOTFOUND; }
 
-  bool use_backend = backend_opened();
   int rc = 1;
+
+  bool use_backend = backend_opened();
   if(use_backend){
     
     rc = backend_getpwuid_r(uid, result, buffer, buflen);
@@ -39,31 +42,32 @@ _nss_ega_getpwuid_r(uid_t uid, struct passwd *result,
     
   }
 
-  if( getuid() != 0 ){ return NSS_STATUS_NOTFOUND; }
-  D2("Ok, you are root, go go gadget \"fetch users from CentralEGA\"");
+  if( getuid() != 0 ){ D2("you are not root"); return NSS_STATUS_NOTFOUND; }
+
+  D2("Fetching user from CentralEGA");
 
   /* Defining the callback */
-  int cega_callback(char* uname, uid_t ega_uid, char* password_hash, char* pubkey, char* gecos){
+  int cega_callback(struct fega_user *user){
 
     /* assert same name */
-    if( ega_uid != uid ){
-      REPORT("Requested user id %u not matching user id response %u", uid, ega_uid);
+    if( user->uid != uid ){
+      REPORT("Requested user id %u not matching user id response %u", uid, user->uid);
       return 1;
     }
 
     /* Add to database. Ignore result.
      In case the buffer is too small later, it'll fetch the same data from the cache, next time. */
-    if(use_backend) backend_add_user(uname, uid, password_hash, pubkey, gecos);
+    if(use_backend) backend_add_user(user);
 
     /* Prepare the answer */
-    char* homedir = strjoina(options->ega_dir, "/", uname);
-    D1("User id %u [Username %s] [Homedir %s]", ega_uid, uname, homedir);
-    if( copy2buffer(uname, &(result->pw_name)   , &buffer, &buflen) < 0 ) { return -1; }
+    char* homedir = strjoina(options->ega_dir, "/", user->username);
+    D1("User id %u [Username %s] [Homedir %s]", user->uid, user->username, homedir);
+    if( copy2buffer(user->username, &(result->pw_name)   , &buffer, &buflen) < 0 ) { return -1; }
     if( copy2buffer("x", &(result->pw_passwd), &buffer, &buflen) < 0 ){ return -1; }
-    result->pw_uid = uid;
+    result->pw_uid = user->uid;
     result->pw_gid = options->gid;
     if( copy2buffer(homedir, &(result->pw_dir)   , &buffer, &buflen) < 0 ) { return -1; }
-    if( copy2buffer(gecos,   &(result->pw_gecos) , &buffer, &buflen) < 0 ) { return -1; }
+    if( copy2buffer(user->gecos,   &(result->pw_gecos) , &buffer, &buflen) < 0 ) { return -1; }
     if( copy2buffer(options->shell, &(result->pw_shell), &buffer, &buflen) < 0 ) { return -1; }
 
     return 0;
@@ -84,7 +88,7 @@ _nss_ega_getpwuid_r(uid_t uid, struct passwd *result,
 
 /* Find user ny name */
 enum nss_status
-_nss_ega_getpwnam_r(const char *username, struct passwd *result,
+NSS_NAME(getpwnam_r)(const char *username, struct passwd *result,
 		    char *buffer, size_t buflen, int *errnop)
 {
   /* bail out if we're looking for the root user */
@@ -93,8 +97,9 @@ _nss_ega_getpwnam_r(const char *username, struct passwd *result,
   D1("Looking up '%s'", username);
   /* memset(buffer, '\0', buflen); */
 
-  bool use_backend = backend_opened();
   int rc = 1;
+
+  bool use_backend = backend_opened();
   if(use_backend){
     
     rc = backend_getpwnam_r(username, result, buffer, buflen);
@@ -103,31 +108,32 @@ _nss_ega_getpwnam_r(const char *username, struct passwd *result,
     
   }
 
-  if( getuid() != 0 ){ return NSS_STATUS_NOTFOUND; }
-  D2("Ok, you are root, go go gadget \"fetch users from CentralEGA\"");
+  if( getuid() != 0 ){ D2("you are not root"); return NSS_STATUS_NOTFOUND; }
+
+  D2("Fetching user from CentralEGA");
 
   /* Defining the callback */
-  int cega_callback(char* uname, uid_t uid, char* password_hash, char* pubkey, char* gecos){
+  int cega_callback(struct fega_user *user){
 
     /* assert same name */
-    if( strcmp(username, uname) ){
-      REPORT("Requested username %s not matching username response %s", username, uname);
+    if( strcmp(username, user->username) ){
+      REPORT("Requested username %s not matching username response %s", username, user->username);
       return 1;
     }
 
     /* Add to database. Ignore result.
      In case the buffer is too small later, it'll fetch the same data from the cache, next time. */
-    if(use_backend) backend_add_user(username, uid, password_hash, pubkey, gecos);
+    if(use_backend) backend_add_user(user);
 
     /* Prepare the answer */
     char* homedir = strjoina(options->ega_dir, "/", username);
-    D1("Username %s [Homedir %s]", uname, homedir);
+    D1("Username %s [Homedir %s]", user->username, homedir);
     result->pw_name = (char*)username; /* no need to copy to buffer */
     if( copy2buffer("x", &(result->pw_passwd), &buffer, &buflen) < 0 ){ return -1; }
-    result->pw_uid = uid;
+    result->pw_uid = user->uid;
     result->pw_gid = options->gid;
     if( copy2buffer(homedir, &(result->pw_dir)   , &buffer, &buflen) < 0 ) { return -1; }
-    if( copy2buffer(gecos,   &(result->pw_gecos) , &buffer, &buflen) < 0 ) { return -1; }
+    if( copy2buffer(user->gecos,   &(result->pw_gecos) , &buffer, &buflen) < 0 ) { return -1; }
     if( copy2buffer(options->shell, &(result->pw_shell), &buffer, &buflen) < 0 ) { return -1; }
   
     /* make sure the homedir is created */

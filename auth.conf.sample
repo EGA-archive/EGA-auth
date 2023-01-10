@@ -7,11 +7,6 @@ cega_endpoint_username = http://cega_users/users/%s?idType=username
 cega_endpoint_uid = http://cega_users/users/%u?idType=uid
 cega_creds = user:password
 
-# Selects where the JSON object is rooted
-# Use a dotted format à la JQ, eg level1.level2.level3
-# Default: empty
-cega_json_prefix = 
-
 # Enforce hostname verification.
 # Default: no
 # verify_hostname = yes

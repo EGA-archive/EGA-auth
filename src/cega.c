@@ -9,7 +9,6 @@
 
 #include "utils.h"
 #include "backend.h"
-#include "json.h"
 #include "cega.h"
 
 struct curl_res_s {
@@ -39,19 +38,16 @@ curl_callback (void* contents, size_t size, size_t nmemb, void* userdata) {
 }
 
 int
-cega_resolve(const char *endpoint,
-	     int (*cb)(char*, uid_t, char*, char*, char*))
+cega_resolve(const char *endpoint, int (*cb)(struct fega_user *user))
 {
   int rc = 1; /* error */
   struct curl_res_s* cres = NULL;
   CURL* curl = NULL;
-  char *username = NULL;
-  char *pwd = NULL;
-  char *pbk = NULL;
-  char *gecos = NULL;
-  int uid = -1;
+  struct fega_user user;
 
   D1("Contacting %s", endpoint);
+  memset(&user, 0, sizeof(user));
+  user.uid = -1;
 
   /* Preparing cURL */
   curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -111,30 +107,43 @@ cega_resolve(const char *endpoint,
   D1("JSON string [size %zu]: %s", cres->size, cres->body);
   
   D2("Parsing the JSON response");
-  rc = parse_json(cres->body, cres->size, 
-		  &username, &pwd, &pbk, &gecos, &uid);
+  rc = parse_json(cres->body, cres->size, &user);
 
   if(rc) { D1("We found %d errors", rc); goto BAILOUT; }
 
   /* Checking the data */
-  if( !username ) rc++;
-  if( !pwd && !pbk ) rc++;
-  if( uid <= 0 ) rc++;
-  /* if( !gecos ) rc++; */
-  if( !gecos ) gecos = strdup("LocalEGA User");
+  if( !user.username ) rc++;
+  if( !user.pwdh && !user.pubkeys ) rc++;
+  if( user.uid <= 0 ) rc++;
+  /* if( !user.gecos ) rc++; */
+  if( !user.gecos ) user.gecos = strdup("FEGA User");
 
   if(rc) { D1("We found %d errors", rc); goto BAILOUT; }
 
+  user.uid += options->uid_shift;
+
   /* Callback: What to do with the data */
-  rc = cb(username, (uid_t)(uid + options->uid_shift), pwd, pbk, gecos);
+  rc = cb(&user);
 
 BAILOUT:
   if(cres->body)free(cres->body);
   if(cres)free(cres);
-  if(username){ D3("Freeing username at %p", username); free(username); }
-  if(pwd){ D3("Freeing pwd at %p", pwd); free(pwd); }
-  if(pbk){ D3("Freeing pbk at %p", pbk); free(pbk); }
-  if(gecos){ D3("Freeing gecos at %p", gecos ); free(gecos); }
+
+  /* cleanup */
+  if(user.username) free(user.username);
+  if(user.pwdh) free(user.pwdh);
+  if(user.gecos) free(user.gecos);
+
+  struct pbk *current = user.pubkeys;
+  struct pbk *next = NULL;
+  while( current ){
+    //D3("Freeing pubkey at %p", current);
+    next = current->next;
+    if(current->pbk) free(current->pbk);
+    free(current);
+    current = next;
+  }
+
   curl_easy_cleanup(curl);
   curl_global_cleanup();
   return rc;

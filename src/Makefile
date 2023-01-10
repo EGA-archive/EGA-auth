@@ -9,12 +9,11 @@ NSS_LIBRARY=libnss_ega.so.2.0
 PAM_LIBRARY = pam_ega.so
 KEYS_EXEC = ega_ssh_keys
 
-
 CC=gcc
 LD=ld
 AS=gcc -c
-CFLAGS=-Wall -Wstrict-prototypes -Werror -fPIC -I. -I/usr/local/include -O2
-LIBS=-lpam -lcurl -L/usr/local/lib -lsqlite3
+CFLAGS=-Wall -Werror -Wstrict-prototypes -fPIC -I. -I/usr/local/include -O2
+LIBS=-lpam -lcurl -lsqlite3
 
 ifdef SYSLOG
 CFLAGS += -DHAS_SYSLOG
@@ -48,13 +47,18 @@ debug2: install
 debug3: CFLAGS += -DDEBUG=3 -g -DREPORT
 debug3: install
 
+$(EGA_LIBDIR) $(EGA_BINDIR):
+	@echo "Creating dir: $@"
+	install -d $@
+
+
 $(NSS_LIBRARY): $(HEADERS) $(NSS_OBJECTS)
 	@echo "Linking objects into $@"
-	@$(CC) -shared $(NSS_LD_SONAME) -o $@ $(LIBS) $(NSS_OBJECTS)
+	@$(CC) -shared $(NSS_LD_SONAME) -o $@ $(NSS_OBJECTS) $(LIBS)
 
 $(PAM_LIBRARY): $(HEADERS) $(PAM_OBJECTS)
 	@echo "Linking objects into $@"
-	@$(LD) -x --shared -o $@ $(LIBS) $(PAM_OBJECTS)
+	@$(LD) -x --shared -o $@ $(PAM_OBJECTS) $(LIBS)
 
 $(KEYS_EXEC): $(HEADERS) $(KEYS_OBJECTS) 
 	@echo "Creating $@"
@@ -69,17 +73,14 @@ blowfish/x86.o: blowfish/x86.S $(HEADERS)
 	@$(CC) $(CFLAGS) -c -o $@ $<
 
 install-nss: $(NSS_LIBRARY)
-	@[ -d $(EGA_LIBDIR) ] || { echo "Creating lib dir: $(EGA_LIBDIR)"; install -d $(EGA_LIBDIR); }
 	@echo "Installing $< into $(EGA_LIBDIR)"
 	@install $< $(EGA_LIBDIR)
 
-install-pam: $(PAM_LIBRARY)
-	@[ -d $(EGA_LIBDIR) ] || { echo "Creating lib dir: $(EGA_LIBDIR)"; install -d $(EGA_LIBDIR); }
+install-pam: $(PAM_LIBRARY) | $(EGA_LIBDIR)
 	@echo "Installing $< into $(EGA_LIBDIR)"
 	@install $< $(EGA_LIBDIR)
 
-install-keys: $(KEYS_EXEC)
-	@[ -d $(EGA_BINDIR) ] || { echo "Creating bin dir: $(EGA_BINDIR)"; install -d $(EGA_BINDIR); }
+install-keys: $(KEYS_EXEC) | $(EGA_BINDIR)
 	@echo "Installing $< into $(EGA_BINDIR)"
 	@install -m 700 $< $(EGA_BINDIR)
 

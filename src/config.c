@@ -105,7 +105,6 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
   COPYVAL(CFGFILE   , &(options->cfgfile), &buffer, &buflen );
   COPYVAL(PROMPT    , &(options->prompt) , &buffer, &buflen );
   COPYVAL(EGA_SHELL , &(options->shell)  , &buffer, &buflen );
-  options->cega_json_prefix = '\0'; /* default */
 
   /* Parse line by line */
   while (getline(&line, &len, fp) > 0) {
@@ -146,7 +145,6 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
     INJECT_OPTION(key, "cega_endpoint_username", val, &(options->cega_endpoint_username));
     INJECT_OPTION(key, "cega_endpoint_uid" , val, &(options->cega_endpoint_uid));
     INJECT_OPTION(key, "cega_creds"        , val, &(options->cega_creds)       );
-    INJECT_OPTION(key, "cega_json_prefix"  , val, &(options->cega_json_prefix) );
     INJECT_OPTION(key, "cacertfile"        , val, &(options->cacertfile)       );
     INJECT_OPTION(key, "certfile"          , val, &(options->certfile)         );
     INJECT_OPTION(key, "keyfile"           , val, &(options->keyfile)          );

@@ -95,21 +95,31 @@ static inline void free_str(char** p){ D3("Freeing %p: %s", p, *p); free(*p); }
 static inline int
 copy2buffer(const char* data, char** dest, char **bufptr, size_t *buflen)
 {
-  size_t slen = strlen(data) + 1;
+  size_t dlen = strlen(data);
 
-  if(*buflen < slen) {
-    D3("buffer too small [currently: %zd bytes left] to copy \"%s\" [%zd bytes]", *buflen, data, slen);
-    return -slen;
+  if(*buflen < dlen + 1) {
+    D3("buffer too small [currently: %zd bytes left] to copy \"%s\" [needs %zd +1 bytes]", *buflen, data, dlen);
+    if(dest) *dest = NULL;
+    return -dlen - 1;
   }
 
-  strncpy(*bufptr, data, slen-1);
-  (*bufptr)[slen-1] = '\0';
+  /* strncpy(*bufptr, data, slen-1); */
+  /* (*bufptr)[slen-1] = '\0'; */
+  /* https://developers.redhat.com/blog/2018/05/24/detecting-string-truncation-with-gcc-8/ */
+
+  /* record location */
+  char* p = *bufptr;
+  if(dest) *dest = p; 
+
+  int i=0;
+  for (; i < dlen && data[i] != '\0'; i++) /* whichever comes first */
+    p[i] = data[i];
+  p[i] = '\0';
+
+  *bufptr += i + 1;
+  *buflen -= i + 1;
   
-  if(dest) *dest = *bufptr; /* record location */
-  *bufptr += slen;
-  *buflen -= slen;
-  
-  return slen;
+  return i + 1;
 }
 
 #endif /* !__LEGA_UTILS_H_INCLUDED__ */

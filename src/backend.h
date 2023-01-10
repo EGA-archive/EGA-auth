@@ -10,18 +10,15 @@
 #endif
 
 #include "config.h"
+#include "json.h"
 
-int backend_add_user(const char* username,
-		     uid_t uid,
-		     const char* pwdh,
-		     const char* pubkey,
-		     const char* gecos);
+int backend_add_user(const struct fega_user *user);
 
 int backend_getpwnam_r(const char* username, struct passwd *result, char *buffer, size_t buflen);
 int backend_getpwuid_r(uid_t uid, struct passwd *result, char *buffer, size_t buflen);
 
 bool backend_get_password_hash(const char* username, char** data);
-bool backend_print_pubkey(const char* username);
+bool backend_print_pubkeys(const char* username);
 
 bool backend_has_expired(const char* username);
 

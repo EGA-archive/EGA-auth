@@ -30,8 +30,6 @@ struct options_s {
   char* cega_endpoint_uid;      /* string format with one %s, replaced by uid      | idem */
   size_t cega_endpoint_uid_len; /* its length, -2 (for %s) */
 
-  char* cega_json_prefix;  /* Searching for the data rooted at this prefix */
-
   char* cega_creds;        /* for authentication: user:password */
 
   char* cacertfile;        /* path to the Root certificate to contact Central EGA */

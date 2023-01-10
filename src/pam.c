@@ -23,7 +23,9 @@
 
 #include <limits.h>
 
+#define __SKIP_GNU
 #include "blowfish/ow-crypt.h"
+
 #include "utils.h"
 #include "backend.h"
 #include "cega.h"
@@ -230,14 +232,14 @@ pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const char *argv[])
   if(!backend_has_expired(username)){ D1("Account valid for user '%s' [cached]", username); return PAM_SUCCESS; }
 
   /* Defining the CentralEGA callback */
-  int cega_callback(char* uname, uid_t uid, char* password_hash, char* pubkey, char* gecos){
+  int cega_callback(struct fega_user *user){
     /* assert same name */
-    if( strcmp(username, uname) ){
-      REPORT("Requested username %s not matching username response %s", username, uname);
+    if( strcmp(username, user->username) ){
+      REPORT("Requested username %s not matching username response %s", username, user->username);
       return PAM_CRED_UNAVAIL;
     }
     /* Add to database. Ignore result. */
-    if(use_backend) backend_add_user(username, uid, password_hash, pubkey, gecos);
+    if(use_backend) backend_add_user(user);
     return PAM_SUCCESS;
   }
 
@@ -287,16 +289,16 @@ _get_password_hash(const char* username, char** data)
   if(use_backend && backend_get_password_hash(username, data)) return rc;
 
   /* Defining the CentralEGA callback */
-  int _get_pwdh(char* uname, uid_t uid, char* password_hash, char* pubkey, char* gecos){
+  int _get_pwdh(struct fega_user *user){
     int rc = 1;
     /* assert same name */
-    if( strcmp(username, uname) ){
-      REPORT("Requested username %s not matching username response %s", username, uname);
+    if( strcmp(username, user->username) ){
+      REPORT("Requested username %s not matching username response %s", username, user->username);
       return rc;
     }
-    if(password_hash){ *data = strdup(password_hash); rc = 0; /* success */ }
+    if(user->pwdh){ *data = strdup(user->pwdh); rc = 0; /* success */ }
     else { REPORT("No password hash found for user '%s'", username); }
-    if(use_backend) backend_add_user(username, uid, password_hash, pubkey, gecos); // ignore result
+    if(use_backend) backend_add_user(user); // ignore result
     return rc;
   }
 
