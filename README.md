@@ -21,15 +21,17 @@ It is necessary to create `/etc/ega/auth.conf`. Use `auth.conf.sample` as an exa
 Update `/etc/nsswitch.conf` and add the ega module first, for passwd
 
 	passwd: files ega ...
+	shadow: files ega ...
 
 Note: Don't put it first, otherwise it'll search for every users on
 the system (eg sshd, root, ...).
 
 Then update your PAM service file. For example, include lines like:
 
-	# module_interface     control_flag     module_name                     module_arguments
-	auth                   required         /usr/local/lib/ega/pam_ega.so   use_first_pass
-	session                required         /usr/local/lib/ega/pam_ega.so
+	# module_interface     control_flag     module_name                       module_arguments
+	auth                   required         /lib/security/pam_ega_auth.so     use_first_pass
+	account                required         /lib/security/pam_ega_acct.so     attrs=0700 bail_on_exists
+	#session               required         /lib/security/pam_ega_session.so  umask=0007
 
 See
 [the LocalEGA general documentation](http://localega.readthedocs.io)
@@ -38,7 +40,7 @@ for further information, and examples.
 
 # How it is build
 
-This repository contains the NSS and PAM module for LocalEGA.
+This repository contains the NSS and PAM modules for Federated EGA.
 
 We use NSS to find out about the users, and PAM to authenticate them
 (and chroot them for each session).
@@ -58,10 +60,12 @@ The EGA NSS module proceed in several steps:
   road.
 
 * If the user exists at CentralEGA, we parse the JSON answer and put
-  the retrieved user in the local cache. We then create the user's
-  home directory (which location might vary per LocalEGA site).
+  the retrieved user in the local cache.
   
 * Upon new requests, only the cache gets queried.
+
+The configuration settings are in `/etc/ega/auth.conf`, and the cache
+can be bypassed with `use_cache = no`.
 
 Now that the user is retrieved, the PAM module takes the relay baton.
 
@@ -71,9 +75,8 @@ There are 4 components:
   the cache the user's password hash, which we compare to the one
   supplied by the user.
 
-* `account` is used to check if the account has expired. Here, it just
-  a pass-through, it always succeeds.  We can use it later, for users
-  that are not in CentralEGA.
+* `account` is used to check to create the user's home directory
+  (which location might vary per Federated EGA site).
 
 * `password` is used to re-create passwords. In our case, we don't
   need it so that component is left unimplemented.
@@ -81,7 +84,8 @@ There are 4 components:
 * `session` is used whenever a user passes the authentication step and
   is about the log onto the service (in our case: sshd). When a
   session is open, we refresh the last access date of the user and
-  chroot the user into its home directory.
+  chroot the user into its home directory. We also set the umask.  
+  If you use openssh to start a remote session, it already can chroot
+  the user in its own directory, so you can skip the PAM session
+  setting.
 
-
-The configuration settings are in `/etc/ega/auth.conf`.
