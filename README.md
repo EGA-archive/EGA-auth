@@ -55,9 +55,9 @@ The EGA NSS module proceed in several steps:
 * If the user is found a local cache, and that local cache has not
   expired, it is returned immediately.
 
-* If the user is not found in the cache, we query CentralEGA (with a
-  REST call). If the user doesn't exist there, it's the end of the
-  road.
+* If the user is not found in the cache, we query CentralEGA (with [a
+  REST call](https://nss.ega-archive.org/spec/)). If the user doesn't
+  exist there, it's the end of the road.
 
 * If the user exists at CentralEGA, we parse the JSON answer and put
   the retrieved user in the local cache.
