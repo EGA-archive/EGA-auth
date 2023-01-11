@@ -1,5 +1,5 @@
-#ifndef __LEGA_UTILS_H_INCLUDED__
-#define __LEGA_UTILS_H_INCLUDED__
+#ifndef __FEGA_UTILS_H_INCLUDED__
+#define __FEGA_UTILS_H_INCLUDED__
 
 #include <stdlib.h>
 #include <stddef.h>
@@ -25,26 +25,18 @@
 
 #ifdef DEBUG
 
-extern char* syslog_name;
+#define LEVEL1 ""
+#define LEVEL2 "    "
+#define LEVEL3 "        "
 
 #ifdef HAS_SYSLOG
-
+extern char* syslog_name;
 #undef REPORT
 #define REPORT(fmt, ...) syslog(LOG_MAKEPRI(LOG_USER, LOG_ERR), " > "fmt"\n", ##__VA_ARGS__)
-
 #define DEBUG_FUNC(level, fmt, ...) syslog(LOG_MAKEPRI(LOG_USER, LOG_ERR), level" "fmt"\n", ##__VA_ARGS__)
-#define LEVEL1 ""
-#define LEVEL2 "    "
-#define LEVEL3 "        "
-/* #define LEVEL1 "debug1:" */
-/* #define LEVEL2 "debug2:" */
-/* #define LEVEL3 "debug3:" */
-#else
+#else /* no syslog */
 #define DEBUG_FUNC(level, fmt, ...) fprintf(stderr, "[%5d / %5d] %-10s(%3d)%22s |" level " " fmt "\n", getppid(), getpid(), __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
-#define LEVEL1 ""
-#define LEVEL2 "    "
-#define LEVEL3 "        "
-#endif
+#endif /* !HAS_SYSLOG */
 
 #if DEBUG > 0
 #undef D1
@@ -126,4 +118,4 @@ copy2buffer(const char* data, char** dest, char **bufptr, size_t *buflen)
   return i + 1;
 }
 
-#endif /* !__LEGA_UTILS_H_INCLUDED__ */
+#endif /* !__FEGA_UTILS_H_INCLUDED__ */

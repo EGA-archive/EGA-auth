@@ -1,5 +1,5 @@
-#ifndef __LEGA_CENTRAL_H_INCLUDED__
-#define __LEGA_CENTRAL_H_INCLUDED__
+#ifndef __FEGA_CENTRAL_H_INCLUDED__
+#define __FEGA_CENTRAL_H_INCLUDED__
 
 #include <sys/types.h>
 
@@ -7,4 +7,4 @@
 
 int cega_resolve(const char *endpoint, int (*cb)(struct fega_user *));
 
-#endif /* !__LEGA_CENTRAL_H_INCLUDED__ */
+#endif /* !__FEGA_CENTRAL_H_INCLUDED__ */

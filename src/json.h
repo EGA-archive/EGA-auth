@@ -1,5 +1,5 @@
-#ifndef __LEGA_JSON_H_INCLUDED__
-#define __LEGA_JSON_H_INCLUDED__
+#ifndef __FEGA_JSON_H_INCLUDED__
+#define __FEGA_JSON_H_INCLUDED__
 
 #include "jsmn/jsmn.h"
 
@@ -21,4 +21,4 @@ void fega_user_free(struct fega_user *user);
 
 int parse_json(const char* json, int jsonlen, struct fega_user *user);
 
-#endif /* !__LEGA_JSON_H_INCLUDED__ */
+#endif /* !__FEGA_JSON_H_INCLUDED__ */

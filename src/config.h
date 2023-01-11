@@ -1,6 +1,6 @@
 
-#ifndef __LEGA_CONFIG_H_INCLUDED__
-#define __LEGA_CONFIG_H_INCLUDED__
+#ifndef __FEGA_CONFIG_H_INCLUDED__
+#define __FEGA_CONFIG_H_INCLUDED__
 
 #include <stdbool.h>
 #include <sys/types.h> 
@@ -53,4 +53,4 @@ extern options_t* options;
 bool loadconfig(void);
 void cleanconfig(void);
 
-#endif /* !__LEGA_CONFIG_H_INCLUDED__ */
+#endif /* !__FEGA_CONFIG_H_INCLUDED__ */
