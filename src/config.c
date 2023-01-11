@@ -3,20 +3,16 @@
 #include <grp.h>
 #include <strings.h>
 #include <stdio.h>
+#include <sys/stat.h>
 
 #include "utils.h"
 #include "config.h"
 
 #define CFGFILE "/etc/ega/auth.conf"
-#define PROMPT "Please, enter your EGA password: "
-#define UMASK 0027 /* no permission for world */
 
 #define CACHE_TTL 3600 // 1h in seconds.
 #define EGA_UID_SHIFT 10000
 #define EGA_SHELL "/bin/bash"
-
-#define ENABLE_CHROOT false
-#define CHROOT_OPTION "chroot_sessions"
 
 #define VERIFY_PEER false
 #define VERIFY_HOSTNAME false
@@ -46,15 +42,12 @@ valid_options(void)
 
   D2("Checking the config struct");
   if(options->cache_ttl < 0.0    ) { D3("Invalid cache_ttl");        valid = false; }
-  if(options->uid_shift < 0      ) { D3("Invalid ega_uid_shift");    valid = false; }
-  if(options->gid < 0            ) { D3("Invalid ega_gid");          valid = false; }
+  if(options->uid_shift < 0      ) { D3("Invalid uid_shift");    valid = false; }
+  if(options->gid < 0            ) { D3("Invalid gid");          valid = false; }
 
   if(!options->shell             ) { D3("Invalid shell");            valid = false; }
-  if(!options->prompt            ) { D3("Invalid prompt");           valid = false; }
 
-  if(!options->ega_dir           ) { D3("Invalid ega_dir");          valid = false; }
-  if(!options->ega_dir_attrs     ) { D3("Invalid ega_dir_attrs");    valid = false; }
-  if(!options->ega_dir_umask     ) { D3("Invalid ega_dir_umask");    valid = false; }
+  if(!options->homedir_prefix    ) { D3("Invalid homedir_prefix");   valid = false; }
 
   if(!options->db_path           ) { D3("Invalid db_path");          valid = false; }
 
@@ -81,19 +74,21 @@ static inline int
 readconfig(FILE* fp, char* buffer, size_t buflen)
 {
   D3("Reading configuration file");
-  _cleanup_str_ char* line = NULL;
+  char* line = NULL;
   size_t len = 0;
   char *key,*eq,*val,*end;
 
   /* Default config values */
   options->uid_shift = EGA_UID_SHIFT;
   options->gid = -1;
-  options->chroot = ENABLE_CHROOT;
-  options->ega_dir_umask = (mode_t)UMASK;
   options->cache_ttl = CACHE_TTL;
+  options->use_cache = true;
 
-  options->cega_endpoint_username_len = 0;
-  options->cega_endpoint_uid_len = 0;
+  options->sp_min = 0;
+  options->sp_max = 0;
+  options->sp_warn = -1l;
+  options->sp_inact = -1l;
+  options->sp_expire = -1l;
 
   /* TLS settings */
   options->verify_peer = VERIFY_PEER;
@@ -103,8 +98,10 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
   options->keyfile = NULL;
 
   COPYVAL(CFGFILE   , &(options->cfgfile), &buffer, &buflen );
-  COPYVAL(PROMPT    , &(options->prompt) , &buffer, &buflen );
   COPYVAL(EGA_SHELL , &(options->shell)  , &buffer, &buflen );
+
+  options->cega_endpoint_username_len = 0;
+  options->cega_endpoint_uid_len = 0;
 
   /* Parse line by line */
   while (getline(&line, &len, fp) > 0) {
@@ -132,16 +129,19 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
 	  
     } else val = NULL; /* could not find the '=' sign */
 	
-    if(!strcmp(key, "ega_dir_umask" )) { options->ega_dir_umask = strtol(val, NULL, 8); } /* ok when val contains a comment #... */
-    if(!strcmp(key, "ega_dir_attrs" )) { options->ega_dir_attrs = strtol(val, NULL, 8); }
     if(!strcmp(key, "ega_uid_shift" )) { if( !sscanf(val, "%u" , &(options->uid_shift) )) options->uid_shift = -1; }
     if(!strcmp(key, "cache_ttl"     )) { if( !sscanf(val, "%u" , &(options->cache_ttl) )) options->cache_ttl = -1; }
-    if(!strcmp(key, "ega_gid"       )) { if( !sscanf(val, "%u" , &(options->gid)   )) options->gid = -1; }
+    if(!strcmp(key, "gid"           )) { if( !sscanf(val, "%u" , &(options->gid)   )) options->gid = -1; }
+
+    if(!strcmp(key, "shadow_min"       )) { if( !sscanf(val, "%ld" , &(options->sp_min)   )) options->sp_min = 0; }
+    if(!strcmp(key, "shadow_max"       )) { if( !sscanf(val, "%ld" , &(options->sp_max)   )) options->sp_max = 0; }
+    if(!strcmp(key, "shadow_warn"       )) { if( !sscanf(val, "%ld" , &(options->sp_warn)   )) options->sp_warn = -1l; }
+    if(!strcmp(key, "shadow_inact"       )) { if( !sscanf(val, "%ld" , &(options->sp_inact)   )) options->sp_inact = -1l; }
+    if(!strcmp(key, "shadow_expire"       )) { if( !sscanf(val, "%ld" , &(options->sp_expire)   )) options->sp_expire = -1l; }
    
     INJECT_OPTION(key, "db_path"           , val, &(options->db_path)          );
-    INJECT_OPTION(key, "ega_dir"           , val, &(options->ega_dir)          );
-    INJECT_OPTION(key, "prompt"            , val, &(options->prompt)           );
-    INJECT_OPTION(key, "ega_shell"         , val, &(options->shell)            );
+    INJECT_OPTION(key, "homedir_prefix"    , val, &(options->homedir_prefix)   );
+    INJECT_OPTION(key, "shell"             , val, &(options->shell)            );
     INJECT_OPTION(key, "cega_endpoint_username", val, &(options->cega_endpoint_username));
     INJECT_OPTION(key, "cega_endpoint_uid" , val, &(options->cega_endpoint_uid));
     INJECT_OPTION(key, "cega_creds"        , val, &(options->cega_creds)       );
@@ -150,19 +150,21 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
     INJECT_OPTION(key, "keyfile"           , val, &(options->keyfile)          );
 
 
-    set_yes_no_option(key, val, CHROOT_OPTION, &(options->chroot));
     set_yes_no_option(key, val, "verify_peer", &(options->verify_peer));
     set_yes_no_option(key, val, "verify_hostname", &(options->verify_hostname));
+    set_yes_no_option(key, val, "use_cache", &(options->use_cache));
   }
 
-  D1(CHROOT_OPTION": %s", ((options->chroot)?"yes":"no"));
-  D1("verify_peer: %s", ((options->verify_peer)?"yes":"no"));
-  D1("verify_hostname: %s", ((options->verify_hostname)?"yes":"no"));
+  D3("verify_peer: %s", ((options->verify_peer)?"yes":"no"));
+  D3("verify_hostname: %s", ((options->verify_hostname)?"yes":"no"));
+  D3("use_cache: %s", ((options->use_cache)?"yes":"no"));
 
   if(options->cega_endpoint_username)
     options->cega_endpoint_username_len = strlen(options->cega_endpoint_username) - 1; /* count away %u, add \0 */
   if(options->cega_endpoint_uid)
     options->cega_endpoint_uid_len = strlen(options->cega_endpoint_uid) - 1; /* count away %u, add \0 */
+
+  if(line) free(line);
 
   return 0;
 }
@@ -170,19 +172,24 @@ readconfig(FILE* fp, char* buffer, size_t buflen)
 bool
 loadconfig(void)
 {
-  D1("Loading configuration %s", CFGFILE);
-  if(options){ D2("Already loaded [@ %p]", options); return true; }
+  if(options){ D3("Config already loaded [@ %p]", options); return true; }
 
-  _cleanup_file_ FILE* fp = NULL;
+  D1("Loading configuration %s", CFGFILE);
+  FILE* fp = NULL;
   size_t size = 1024;
-  
+
   /* read or re-read */
   fp = fopen(CFGFILE, "r");
-  if (fp == NULL || errno == EACCES) { D2("Error accessing the config file: %s", strerror(errno)); return false; }
+  if (fp == NULL || errno == EACCES) { D2("Error accessing the config file: %s", strerror(errno)); goto fail; }
 
   options = (options_t*)malloc(sizeof(options_t));
-  if(!options){ D3("Could not allocate options data structure"); return false; };
+  if(!options){ D3("Could not allocate options data structure"); goto fail; };
   options->buffer = NULL;
+
+  struct stat info;
+  stat(CFGFILE, &info);
+  options->shadow_gid = info.st_gid;
+  D1("Config file gid: %u", options->shadow_gid);
 
 REALLOC:
   D3("Allocating buffer of size %zd", size);
@@ -190,12 +197,12 @@ REALLOC:
   options->buffer = malloc(sizeof(char) * size);
   memset(options->buffer, '\0', size);
   /* *(options->buffer) = '\0'; */
-  if(!options->buffer){ D3("Could not allocate buffer of size %zd", size); return false; };
+  if(!options->buffer){ D3("Could not allocate buffer of size %zd", size); goto fail; }
 
   if( readconfig(fp, options->buffer, size) < 0 ){
 
     /* Rewind first */
-    if(fseek(fp, 0, SEEK_SET)){ D3("Could not rewind config file to start"); return false; }
+    if(fseek(fp, 0, SEEK_SET)){ D3("Could not rewind config file to start"); goto fail; }
 
     /* Doubling the buffer size */
     size = size << 1;
@@ -203,21 +210,17 @@ REALLOC:
   }
 
   D2("Conf loaded [@ %p]", options);
-
-#if DEBUG
-  D1("-------------");
-  int i=0;
-  char* c = options->buffer;
-  for(;i<size;i++,c++){ fprintf(stderr, "%c", *c); }
-  fprintf(stderr, "\n");
-  D1("-------------");
-#endif
+  fclose(fp);
 
 #ifdef DEBUG
   return valid_options();
 #else
   return true;
 #endif
+
+fail:
+  if(fp) fclose(fp);
+  return false;
 }
 
 

@@ -14,7 +14,8 @@
  *       "username" : string,
  *       "passwordHash" : string,
  *       "uid" : int,
- *       "gecos" : string
+ *       "gecos" : string,
+ *       "lastChanged" : long int
  *     }
  *
  */
@@ -24,6 +25,7 @@
 #define CEGA_JSON_PWD   "passwordHash"
 #define CEGA_JSON_PBK   "sshPublicKeys"
 #define CEGA_JSON_GECOS "gecos"
+#define CEGA_JSON_LSTCHG "lastChanged"
 
 #ifdef DEBUG
 #define TYPE2STR(t) (((t) == JSMN_OBJECT)   ? "Object":    \
@@ -59,7 +61,7 @@ parse_json(const char* json, int jsonlen, struct fega_user *user)
 {
   jsmn_parser jsonparser; /* on the stack */
   jsmntok_t *tokens = NULL; /* array of tokens */
-  size_t size_guess = 11; /* 5*2 (key:value) + 1(object) */
+  size_t size_guess = 15; /* 6*2 (key:value) + 1(object) + 2 sshkeys */
   int r, rc=1;
 
 REALLOC:
@@ -118,7 +120,7 @@ REALLOC:
 	/* parse array */
 	jsmntok_t *k = t; /* sentinel */
 	int nkeys = k->size;
-	D1("KEYS %s %.*s [%d items]", TYPE2STR(k->type), k->end-k->start, json + k->start, k->size);
+	//D1("KEYS %s %.*s [%d items]", TYPE2STR(k->type), k->end-k->start, json + k->start, k->size);
 	if(k->type == JSMN_ARRAY && nkeys > 0){
 	  if(user->pubkeys){ D3("Strange! I already have pubkeys"); continue; }
 	  k++; /* go inside */
@@ -128,7 +130,6 @@ REALLOC:
 	  user->pubkeys = current;
 	  for (j = 0; j < nkeys; j++, k+=k->size+1) {
 	    current->pbk = strndup(json + k->start, k->end-k->start);
-	    D1("Found key: %s", current->pbk);
 	    current->next = NULL;
 	    if(prev) prev->next = current;
 	    prev = current;
@@ -143,6 +144,14 @@ REALLOC:
 	  int uid = strtol(json + t->start, (char**)&cend, 10); /* reuse cend above */
 	  if( (cend == (json + t->end)) ) /* else: error when cend does not point to end+1 */
 	    user->uid = uid; 
+	}
+      } else if( KEYEQ(json, t, CEGA_JSON_LSTCHG) ){
+	t+=t->size; /* get to the value */
+	if(t->type == JSMN_PRIMITIVE){ /* number */
+	  char* cend;
+	  long int last_changed = strtol(json + t->start, (char**)&cend, 10); /* reuse cend above */
+	  if( (cend == (json + t->end)) ) /* else: error when cend does not point to end+1 */
+	    user->last_changed = last_changed; 
 	}
       } else {
 	D3("Unexpected key: %.*s with %d items", t->end-t->start, json + t->start, t->size);

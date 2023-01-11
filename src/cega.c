@@ -8,7 +8,7 @@
 #include <pwd.h>
 
 #include "utils.h"
-#include "backend.h"
+#include "cache.h"
 #include "cega.h"
 
 struct curl_res_s {
@@ -45,7 +45,7 @@ cega_resolve(const char *endpoint, int (*cb)(struct fega_user *user))
   CURL* curl = NULL;
   struct fega_user user;
 
-  D1("Contacting %s", endpoint);
+  D2("Contacting %s", endpoint);
   memset(&user, 0, sizeof(user));
   user.uid = -1;
 

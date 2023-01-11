@@ -14,6 +14,7 @@ struct fega_user {
   char* pwdh;
   struct pbk* pubkeys;
   char* gecos;
+  long int last_changed;
 };
 
 void fega_user_free(struct fega_user *user);

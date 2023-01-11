@@ -28,10 +28,17 @@
 extern char* syslog_name;
 
 #ifdef HAS_SYSLOG
+
+#undef REPORT
+#define REPORT(fmt, ...) syslog(LOG_MAKEPRI(LOG_USER, LOG_ERR), " > "fmt"\n", ##__VA_ARGS__)
+
 #define DEBUG_FUNC(level, fmt, ...) syslog(LOG_MAKEPRI(LOG_USER, LOG_ERR), level" "fmt"\n", ##__VA_ARGS__)
-#define LEVEL1 "debug1:"
-#define LEVEL2 "debug2:"
-#define LEVEL3 "debug3:"
+#define LEVEL1 ""
+#define LEVEL2 "    "
+#define LEVEL3 "        "
+/* #define LEVEL1 "debug1:" */
+/* #define LEVEL2 "debug2:" */
+/* #define LEVEL3 "debug3:" */
 #else
 #define DEBUG_FUNC(level, fmt, ...) fprintf(stderr, "[%5d / %5d] %-10s(%3d)%22s |" level " " fmt "\n", getppid(), getpid(), __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define LEVEL1 ""
@@ -64,9 +71,6 @@ extern char* syslog_name;
  */
 static inline void close_file(FILE** f){ if(*f){ D3("Closing file"); fclose(*f); }; }
 #define _cleanup_file_ __attribute__((cleanup(close_file)))
-
-static inline void free_str(char** p){ D3("Freeing %p: %s", p, *p); free(*p); }
-#define _cleanup_str_ __attribute__((cleanup(free_str)))
 
 /*
  * Concatenate string and allocate them on the stack.
