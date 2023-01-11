@@ -2,11 +2,11 @@ An NSS module to find the EGA users in a (remote) database
 
 # Compile the library
 
-	make
+	make -C src
 
 # Add it to the system
 
-	make install
+	make -C src install
 
 	echo '/usr/local/lib/ega' > /etc/ld.so.conf.d/ega.conf
 	
