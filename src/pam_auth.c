@@ -168,8 +168,8 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN int
 pam_sm_setcred(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-  D1("Set cred ignored");
-  return PAM_IGNORE;
-  /* D1("Set cred allowed"); */
-  /* return PAM_SUCCESS; */
+  /* D1("Set cred ignored"); */
+  /* return PAM_IGNORE; */
+  D1("Set cred allowed");
+  return PAM_SUCCESS;
 }
