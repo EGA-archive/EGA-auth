@@ -8,6 +8,8 @@
 
 #define NSS_NAME(func) _nss_ega_ ## func
 
+#define CHECK_CONFIG(ret) do { if(options == NULL) return ret; } while(0)
+
 /* 
  * ===========================================================
  *
@@ -25,6 +27,7 @@ enum nss_status
 NSS_NAME(getpwuid_r)(uid_t uid, struct passwd *result,
 		    char *buffer, size_t buflen, int *errnop)
 {
+  CHECK_CONFIG(NSS_STATUS_NOTFOUND);
   /* bail out if we're looking for the root user */
   /* if( uid == (uid_t)0 ){ D1("bail out when root"); return NSS_STATUS_NOTFOUND; } */
 
@@ -95,6 +98,7 @@ enum nss_status
 NSS_NAME(getpwnam_r)(const char *username, struct passwd *result,
 		    char *buffer, size_t buflen, int *errnop)
 {
+  CHECK_CONFIG(NSS_STATUS_NOTFOUND);
   /* bail out if we're looking for the root user */
   /* if( !strcmp(username, "root") ){ D1("bail out when root"); return NSS_STATUS_NOTFOUND; } */
 
@@ -174,6 +178,7 @@ enum nss_status
 NSS_NAME(getspnam_r)(const char *username, struct spwd *result,
 		     char *buffer, size_t buflen, int *errnop)
 {
+  CHECK_CONFIG(NSS_STATUS_NOTFOUND);
 
   /* Only the config file group owner can do that */
   if( getgid() != options->shadow_gid ){ D2("you are allowed"); return NSS_STATUS_UNAVAIL; }
