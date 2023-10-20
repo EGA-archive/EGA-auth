@@ -17,8 +17,9 @@
 #include <security/pam_ext.h>
 #include <security/pam_modutil.h>
 
-#define __SKIP_GNU
-#include "blowfish/ow-crypt.h"
+/* #define _OW_SOURCE */
+//#include "blowfish/ow-crypt.h"
+#include "blowfish/crypt_blowfish.h"
 
 #include "utils.h"
 
@@ -61,6 +62,8 @@ void pam_options(struct options_s *opts, int argc, const char **argv)
   return;
 }
 
+static int timingsafe_bcmp(const void *b1, const void *b2, size_t n);
+#define MIN(a,b) ((a)<(b))?(a):(b)
 /*
  * authenticate user
  */
@@ -144,14 +147,27 @@ pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
   struct spwd *shadow = getspnam(user);
   if(!shadow){ D1("Could not load the password hash of '%s'", user); return PAM_AUTH_ERR; }
 
+  size_t phlen = (shadow->sp_pwdp == NULL)?0:strlen(shadow->sp_pwdp);
+
   if(!strncmp(shadow->sp_pwdp, "$2", 2)){
     D2("Using Blowfish");
     char pwdh_computed[64];
-    if( crypt_rn(password, shadow->sp_pwdp, pwdh_computed, 64) == NULL){ D2("bcrypt failed"); return PAM_AUTH_ERR; }
-    if(!strcmp(shadow->sp_pwdp, (char*)&pwdh_computed[0])) { return PAM_SUCCESS; }
+    memset(pwdh_computed, '\0', 64);
+
+    if(_crypt_blowfish_rn(password, shadow->sp_pwdp, pwdh_computed, 64) == NULL){
+      D2("bcrypt failed: %s", strerror(errno));
+      return PAM_AUTH_ERR;
+    }
+
+    //if(!strcmp(password_hash, (char*)pwdh_computed)) { return PAM_SUCCESS; }
+    if(phlen == strlen(pwdh_computed) &&
+       !timingsafe_bcmp(shadow->sp_pwdp, (char*)pwdh_computed, phlen)) { return PAM_SUCCESS; }
+
   } else {
     D2("Using libc: supporting MD5, SHA256, SHA512");
-    if (!strcmp(shadow->sp_pwdp, crypt(password, shadow->sp_pwdp))){ return PAM_SUCCESS; }
+    char *pwdh_computed = crypt(password, shadow->sp_pwdp);
+    if(phlen == strlen(pwdh_computed) &&
+       !timingsafe_bcmp(shadow->sp_pwdp, pwdh_computed, phlen)) { return PAM_SUCCESS; }
   }
 
   D1("Authentication failed for %s", user);
@@ -172,4 +188,15 @@ pam_sm_setcred(pam_handle_t *pamh, int flags, int argc, const char **argv)
   /* return PAM_IGNORE; */
   D1("Set cred allowed");
   return PAM_SUCCESS;
+}
+
+static int
+timingsafe_bcmp(const void *b1, const void *b2, size_t n)
+{
+  const unsigned char *p1 = b1, *p2 = b2;
+  int ret = 0;
+
+  for (; n > 0; n--)
+    ret |= *p1++ ^ *p2++;
+  return (ret != 0);
 }
